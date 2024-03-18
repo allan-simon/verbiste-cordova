@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="msapplication-tap-highlight" content="no">
+        <meta name="viewport" content="initial-scale=1, width=device-width, viewport-fit=cover">
+        <meta name="color-scheme" content="light dark">
+        <link rel="stylesheet" href="css/index.css">
+        <title>Verbiste Cordova</title>
+    </head>
+    <body class="p-[0.5rem]">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <section
+            class="
+                bg-white
+                dark:bg-slate-800
+                rounded-[0.625rem]
+                transform-gpu
+                drop-shadow-[0px_0px_15px_rgba(59,58,65,0.1)]
+                mt-[1.125rem]
+                mb-[1.5rem]
+                w-full
+                flex flex-col justify-center
+                text-center
+                overflow-x-hidden
+            "
+        >
+            <x-card-main-content class="
+                flex flex-col
+                py-[1.5rem] px-[1rem]
+                min-[512px]:py-[2rem] min-[512px]:px-[1.5rem]
+            ">
+                <form
+                    onsubmit="return searchConjugate(this)"
+                    class="w-full flex flex-col space-y-[0.75rem]"
+                >
+                    <x-value-field class="text-left flex flex-col space-y-[0.25rem]">
+                        <label for="verb" class="text-[0.75rem] font-[600] text-green-900 dark:text-green-500">Verbe</label>
+                        <input id="verb" name="verb" value="manger" class="
+                            text-green-900
+                            dark:text-green-500
+
+                            rounded-[2rem]
+                            text-[0.825rem]
+                            leading-[1.25rem]
+                            px-[1rem]
+                            py-[0.75rem]
+                            w-full
+                            border
+                            focus:ring-green-700
+                            focus:border-green-700
+                            focus-visible:border-green-700
+                            border-rosaly-neutral-700
+                            invalid:[&amp;:not(:placeholder-shown):not(:focus)]:border-rosaly-failure-500
+                            invalid:[&amp;:not(:placeholder-shown):focus]:border-rosaly-failure-500
+                            invalid:[&amp;:not(:placeholder-shown):focus]:ring-rosaly-failure-500
+
+                            aria-invalid:border-rosaly-failure-500
+                            aria-invalid:focus:border-rosaly-failure-500
+                            aria-invalid:focus:ring-rosaly-failure-500
+                        ">
+                    </x-value-field>
+
+                    <button type="submit" class="
+                        font-[500]
+                        rounded-[2rem]
+                        p-[1rem]
+                        w-full
+                        block
+                        disabled:cursor-not-allowed
+                        text-center
+                        text-white
+
+                        border-[2px]
+                        border-green-700
+
+                        outline-none
+                        focus:outline-none
+                        focus-visible:outline-none
+
+                        bg-green-700
+
+                        hover:bg-green-900
+                        hover:border-green-900
+
+                        focus:border-green-900
+                        focus-visible:border-green-900
+
+                        active:bg-green-700-faded
+                        active:border-green-700-faded
+
+                        disabled:border-green-700-faded
+                        disabled:bg-green-700-faded
+                        disabled:text-white
+
+                        group-invalid:border-green-700-faded
+                        group-invalid:bg-green-700-faded
+                        group-invalid:text-white
+                        group-invalid:cursor-not-allowed
+                    ">
+                        Conjuguer
+                    </button>
+                </form>
+            </x-card-main-content>
+        </section>
+
+        <section
+            class="
+                bg-white
+                dark:bg-slate-800
+                rounded-[0.625rem]
+                transform-gpu
+                drop-shadow-[0px_0px_15px_rgba(59,58,65,0.1)]
+                mt-[1.125rem]
+                mb-[1.5rem]
+                w-full
+                flex flex-col justify-center
+                text-center
+                overflow-x-hidden
+            "
+        >
+            <x-card-main-content class="
+                flex flex-col
+                py-[1.5rem] px-[1rem]
+                min-[512px]:py-[2rem] min-[512px]:px-[1.5rem]
+            ">
+                <h2 class="text-[0.75rem] font-[600] text-green-900 dark:text-green-500">résultat</h2>
+                <section x-conjugation-result></section>
+            </x-card-main-content>
+        </section>
+
+        <script src="cordova.js"></script>
+        <script src="sql-wasm.min.js"></script>
+
+        <script>
+
+            let db = null;
+            let stmt = null;
+            let avoirResults = null;
+
+            const complexTenseToAuxilliaryTense = {
+                indicative: {
+                    "present perfect": {mode: 'indicative', tense: 'present'},
+                    pluperfect: {mode: 'indicative', tense: 'imperfect'},
+                    "past perfect": {mode: 'indicative', tense: 'simple past'},
+                    "future perfect": {mode: 'indicative', tense: 'future'},
+                },
+                imperative: {
+                    past: {mode: 'imperative', tense: 'present'},
+                },
+                conditional: {
+                    past_1st_form: {mode: 'conditional', tense: 'present'},
+                    past_2nd_form: {mode: 'subjunctive', tense: 'imperfect'},
+                },
+                subjunctive: {
+                    past: {mode: 'subjunctive', tense: 'present'},
+                    pluperfect: {mode: 'subjunctive', tense: 'imperfect'},
+                },
+            };
+
+            document.addEventListener('deviceready', async function() {
+                const SQL = await initSqlJs({
+                  // Required to load the wasm binary asynchronously. Of course, you can host it wherever you want
+                  // You can omit locateFile completely when running in node
+                    locateFile: function(file) {
+                        return file;
+                    }
+                });
+                const buf = await fetch("conjugation.db").then(res => res.arrayBuffer());
+                db = new SQL.Database(new Uint8Array(buf));
+
+                stmt = db.prepare(`
+                    select
+                        -- allow to choose between je and j'
+                        case h_aspired
+                            when 0 then p.base
+                            else p.with_h_aspired
+                        end as person_text,
+                        radical,
+                        suffix,
+                        m.text as mode_text,
+                        t.text as tense_text
+                    from verb v
+                    join conjugation c on v.verb_type_id = c.verb_type_id
+                    join person p on p.id = c.person
+                    join mode m on c.mode = m.id
+                    join tense t on c.tense = t.id
+                    where v.infinitive_ascii = lower(:verb)
+                    order by mode, tense, person
+                `);
+
+                avoirResults = {
+                    infinitive: {
+                        present: [],
+                    },
+                    indicative: {
+                        present: [],
+                        imperfect: [],
+                        "simple past": [],
+                        future: [],
+
+                    },
+                    imperative: {
+                        present: [],
+                        past: [],
+                    },
+                    conditional: {
+                        present: [],
+                    },
+                    subjunctive: {
+                        present: [],
+                        imperfect: [],
+                    },
+                    participle: {
+                        present: [],
+                        past: [],
+                    },
+                };
+                stmt.bind(['avoir']);
+                while (stmt.step()) {
+                    const one_result = stmt.get();
+                    avoirResults[one_result[3]][one_result[4]].push(one_result);
+                    console.log(stmt.get()); // Will print [0, 'hello']
+                    // free the memory used by the statement
+                }
+
+
+            });
+
+            let searchConjugate = async function(form) {
+                event.preventDefault();
+                const ascii_verb = form.verb.value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+                stmt.bind([ascii_verb]);
+
+                const results = {
+                    infinitive: {
+                        present: [],
+                    },
+                    indicative: {
+                        present: [],
+                        "present perfect": [],
+                        imperfect: [],
+                        pluperfect: [],
+                        "simple past": [],
+                        "past perfect": [],
+                        "future": [],
+                        "future perfect": [],
+
+                    },
+                    imperative: {
+                        present: [],
+                        past: [],
+                    },
+                    conditional: {
+                        present: [],
+                        past_1st_form: [],
+                        past_2nd_form: [],
+                    },
+                    subjunctive: {
+                        present: [],
+                        past: [],
+                        imperfect: [],
+                        pluperfect: [],
+                    },
+                    participle: {
+                        present: [],
+                        past: [],
+                    },
+                };
+
+
+                while (stmt.step()) {
+                    const one_result = stmt.get();
+                    results[one_result[3]][one_result[4]].push(one_result);
+                    console.log(stmt.get()); // Will print [0, 'hello']
+                    // free the memory used by the statement
+                }
+                stmt.free();
+
+                const participle = results['participle']['past'][0][1];
+                const participleSuffix = results['participle']['past'][0][2];
+                for (const complexMode in complexTenseToAuxilliaryTense) {
+                    for (const complexTense in complexTenseToAuxilliaryTense[complexMode]) {
+                        const auxilliaryModeTense = complexTenseToAuxilliaryTense[complexMode][complexTense];
+                        const auxilliaryMode = auxilliaryModeTense['mode'];
+                        const auxilliaryTense = auxilliaryModeTense['tense'];
+                        const auxilliaryConjugation = avoirResults[auxilliaryMode][auxilliaryTense];
+                        for (let i = 0; i < auxilliaryConjugation.length; i++) {
+
+                            let person = auxilliaryConjugation[i][0];
+                            if (i == 0) {
+                                person = "j'";
+                            }
+                            results[complexMode][complexTense].push([
+                                person,
+                                auxilliaryConjugation[i][1] + ' ' + participle,
+                                participleSuffix,
+                            ]);
+                        }
+
+                    }
+                }
+                console.log(results);
+
+                const resultElement = document.querySelector('[x-conjugation-result]');
+                resultElement.replaceChildren(); // clear content;
+                for (const currentMode in results) {
+                    const title = document.createElement('h3');
+                    title.className = 'font-[700] mt-[1.5rem] text-[1.25rem]';
+                    title.innerText = currentMode;
+                    resultElement.appendChild(title);
+
+                    const modeSection = document.createElement('x-mode');
+                    modeSection.className = "flex flex-wrap gap-[2rem]";
+                    for (const currentTense in results[currentMode]) {
+                        const tenseSection = document.createElement('x-tense');
+                        const tenseTitle = document.createElement('h4');
+                        tenseTitle.className = 'text-left text-[1.25rem]';
+                        tenseTitle.innerText = currentTense;
+                        tenseSection.appendChild(tenseTitle);
+
+                        const conjugation = results[currentMode][currentTense];
+
+                        const conjugationList = document.createElement('ul');
+
+                        for (let i = 0 ; i < conjugation.length; i++) {
+                            const conjugationItem = document.createElement('li');
+                            conjugationItem.className = 'text-left';
+                            conjugationItem.innerText = conjugation[i][0] + ' ' + conjugation[i][1];
+                            const suffixSpan = document.createElement('span');
+                            suffixSpan.className = 'text-red-600';
+                            suffixSpan.innerText = conjugation[i][2];
+                            conjugationItem.appendChild(suffixSpan);
+                            conjugationList.appendChild(conjugationItem);
+                        }
+                        tenseSection.appendChild(conjugationList);
+                        modeSection.appendChild(tenseSection);
+                    }
+                    resultElement.appendChild(modeSection);
+                }
+
+                return false;
+            };
+
+        </script>
+
+
+</body>
+</html>
