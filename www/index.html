@@ -124,6 +124,103 @@
                 py-[1.5rem] px-[1rem]
                 min-[512px]:py-[2rem] min-[512px]:px-[1.5rem]
             ">
+                <form
+                    onsubmit="return findfromConjugated(this)"
+                    class="w-full flex flex-col space-y-[0.75rem]"
+                >
+                    <x-value-field class="text-left flex flex-col space-y-[0.25rem]">
+                        <label for="verb" class="text-[0.75rem] font-[600] text-green-900 dark:text-green-500">Verbe conjugué</label>
+                        <input id="verb" name="verb" value="mangeons" class="
+                            text-green-900
+                            dark:text-green-500
+
+                            rounded-[2rem]
+                            text-[0.825rem]
+                            leading-[1.25rem]
+                            px-[1rem]
+                            py-[0.75rem]
+                            w-full
+                            border
+                            focus:ring-green-700
+                            focus:border-green-700
+                            focus-visible:border-green-700
+                            border-rosaly-neutral-700
+                            invalid:[&amp;:not(:placeholder-shown):not(:focus)]:border-rosaly-failure-500
+                            invalid:[&amp;:not(:placeholder-shown):focus]:border-rosaly-failure-500
+                            invalid:[&amp;:not(:placeholder-shown):focus]:ring-rosaly-failure-500
+
+                            aria-invalid:border-rosaly-failure-500
+                            aria-invalid:focus:border-rosaly-failure-500
+                            aria-invalid:focus:ring-rosaly-failure-500
+                        ">
+                    </x-value-field>
+
+                    <button type="submit" class="
+                        font-[500]
+                        rounded-[2rem]
+                        p-[1rem]
+                        w-full
+                        block
+                        disabled:cursor-not-allowed
+                        text-center
+                        text-white
+
+                        border-[2px]
+                        border-green-700
+
+                        outline-none
+                        focus:outline-none
+                        focus-visible:outline-none
+
+                        bg-green-700
+
+                        hover:bg-green-900
+                        hover:border-green-900
+
+                        focus:border-green-900
+                        focus-visible:border-green-900
+
+                        active:bg-green-700-faded
+                        active:border-green-700-faded
+
+                        disabled:border-green-700-faded
+                        disabled:bg-green-700-faded
+                        disabled:text-white
+
+                        group-invalid:border-green-700-faded
+                        group-invalid:bg-green-700-faded
+                        group-invalid:text-white
+                        group-invalid:cursor-not-allowed
+                    ">
+                        Déconjuguer
+                    </button>
+                </form>
+                <p class="text-[0.75rem] mt-[0.5rem]">
+                    C'est à dire: retrouver le verbe infinitif à partir d'un verbe conjugué
+                </p>
+            </x-card-main-content>
+        </section>
+
+        <section
+            class="
+                bg-white
+                dark:bg-slate-800
+                rounded-[0.625rem]
+                transform-gpu
+                drop-shadow-[0px_0px_15px_rgba(59,58,65,0.1)]
+                mt-[1.125rem]
+                mb-[1.5rem]
+                w-full
+                flex flex-col justify-center
+                text-center
+                overflow-x-hidden
+            "
+        >
+            <x-card-main-content class="
+                flex flex-col
+                py-[1.5rem] px-[1rem]
+                min-[512px]:py-[2rem] min-[512px]:px-[1.5rem]
+            ">
                 <h2 class="text-[0.75rem] font-[600] text-green-900 dark:text-green-500">résultat</h2>
                 <section x-conjugation-result></section>
             </x-card-main-content>
@@ -136,6 +233,7 @@
 
             let db = null;
             let stmt = null;
+            let stmtDeconjugate = null;
             let avoirResults = null;
 
             const complexTenseToAuxilliaryTense = {
@@ -168,6 +266,23 @@
                 });
                 const buf = await fetch("conjugation.db").then(res => res.arrayBuffer());
                 db = new SQL.Database(new Uint8Array(buf));
+
+                stmtDeconjugate = db.prepare(`
+                    SELECT
+                        infinitive,
+                        m.text as mode_text,
+                        t.text as tense_text,
+                        p.explanation as person_explanation
+                    FROM conjugated_form cf
+                    JOIN verb v ON v._id = cf.verb_id
+                    JOIN conjugation c ON cf.conjugation_id = c.id
+                    JOIN person p ON p.id = c.person
+                    JOIN mode m ON c.mode = m.id
+                    JOIN tense t ON c.tense = t.id
+                    WHERE conjugated_ascii = lower(:verb)
+                    ORDER BY v._id;,
+
+                `);
 
                 stmt = db.prepare(`
                     select
@@ -227,9 +342,32 @@
 
             });
 
+            let findfromConjugated = async function(form) {
+                event.preventDefault();
+                const ascii_verb = form.verb.value.trim().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+                stmtDeconjugate.bind([ascii_verb]);
+
+                const resultElement = document.querySelector('[x-conjugation-result]');
+                resultElement.replaceChildren(); // clear content;
+
+                const list = document.createElement('ul');
+                while (stmtDeconjugate.step()) {
+                    const one_result = stmtDeconjugate.get();
+                    console.log(one_result);
+
+                    [infinitive, mode, tense, person] = one_result;
+
+
+                    const conjugationItem = document.createElement('li');
+                    conjugationItem.innerText = `${infinitive} ${mode} ${tense} ${person}`;
+                    list.appendChild(conjugationItem);
+                }
+                resultElement.appendChild(list);
+            }
+
             let searchConjugate = async function(form) {
                 event.preventDefault();
-                const ascii_verb = form.verb.value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+                const ascii_verb = form.verb.value.trim().normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
                 stmt.bind([ascii_verb]);
 
                 const results = {
