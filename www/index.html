@@ -275,7 +275,6 @@
                     console.log(stmt.get()); // Will print [0, 'hello']
                     // free the memory used by the statement
                 }
-                stmt.free();
 
                 const participle = results['participle']['past'][0][1];
                 const participleSuffix = results['participle']['past'][0][2];
@@ -293,7 +292,7 @@
                             }
                             results[complexMode][complexTense].push([
                                 person,
-                                auxilliaryConjugation[i][1] + ' ' + participle,
+                                auxilliaryConjugation[i][1] + auxilliaryConjugation[i][2] + ' ' + participle,
                                 participleSuffix,
                             ]);
                         }
